@@ -130,7 +130,7 @@ int main(int argc, char **argv) {
     std::string baseName = fileName.substr(0, fileName.find_last_of("."));
     
     // Crear el nombre del archivo de salida (con extensión .png)
-    std::string outputFilePath = outputDir + "/" + baseName + "_output.png";
+    std::string outputFilePath = outputDir + "/" + baseName + "global_const.png";
 
     // Guardar la imagen de salida
     cv::imwrite(outputFilePath, output);
