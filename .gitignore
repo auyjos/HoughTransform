@@ -1,0 +1,37 @@
+# Archivos generados por la compilación
+/build/
+/*.o
+/*.so
+/*.a
+*.out
+*.exe
+
+# Archivos temporales de compilación de CUDA
+*.ptx
+*.cubin
+*.fatbin
+
+# Archivos temporales de compilación de C++
+*.obj
+*.dSYM/
+*.lib
+*.dll
+*.pdb
+
+# Directorios de OpenCV (si tienes alguna configuración de OpenCV local)
+opencv_build/
+
+# Archivos temporales de editores de texto o IDEs
+.vscode/
+.idea/
+
+# Archivos de configuración del sistema
+*.swp
+*.bak
+
+# Archivos generados por el compilador de C++ o CUDA
+*.log
+*.a
+
+# Directorios de dependencias
+node_modules/
