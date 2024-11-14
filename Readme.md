@@ -52,7 +52,7 @@ El proyecto realiza la **Transformada de Hough** en imágenes, un algoritmo que 
 Para ejecutar el programa, usa el siguiente comando:
 
 ```bash
-./build/houghGlobal <ruta_de_imagen>
+./build/houghAll <ruta_de_imagen>
 ```
 
 Sustituye `<ruta_de_imagen>` por el archivo de imagen que deseas procesar. La imagen debe estar en formato en escala de grises.
