@@ -5,7 +5,7 @@
 #include <string.h>
 #include <opencv2/opencv.hpp>
 #include <iostream>
-#include <filesystem> 
+#include <filesystem>
 #include "../common/pgm.h"
 
 const int degreeInc = 2;
@@ -13,7 +13,7 @@ const int degreeBins = 180 / degreeInc;
 const int rBins = 100;
 const float radInc = degreeInc * M_PI / 180;
 
-// Variables en memoria constante para cosenos y senos
+// Variables en memoria constante para cosenos y senos  
 __constant__ float c_Cos[degreeBins];
 __constant__ float c_Sin[degreeBins];
 
@@ -92,6 +92,9 @@ int main(int argc, char **argv) {
 
     int w = img.cols;
     int h = img.rows;
+
+    // Imprimir el tamaño de la imagen cargada
+    std::cout << "Tamaño de la imagen: " << w << "x" << h << std::endl;
 
     unsigned char *pic = new unsigned char[w * h];
     memcpy(pic, img.data, w * h);

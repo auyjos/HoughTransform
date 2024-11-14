@@ -17,7 +17,7 @@ const float radInc = degreeInc * M_PI / 180;
 __constant__ float c_Cos[degreeBins];
 __constant__ float c_Sin[degreeBins];
 
-// Kernel de GPU con memoria constante y global
+// Kernel de GPU optimizado con memoria compartida y constante
 __global__ void GPU_HoughTran(unsigned char *pic, int w, int h, int *acc, float rMax, float rScale) {
     int gloID = blockIdx.x * blockDim.x + threadIdx.x;
     if (gloID >= w * h) return;
@@ -29,10 +29,12 @@ __global__ void GPU_HoughTran(unsigned char *pic, int w, int h, int *acc, float 
     int yCoord = yCent - gloID / w;
 
     if (pic[gloID] > 0) {
+        // Usar memoria constante precargada para seno y coseno
         for (int tIdx = 0; tIdx < degreeBins; tIdx++) {
             float r = xCoord * c_Cos[tIdx] + yCoord * c_Sin[tIdx];
             int rIdx = (r + rMax) / rScale;
             if (rIdx >= 0 && rIdx < rBins) {
+                // Usamos atomicAdd para evitar condiciones de carrera
                 atomicAdd(&acc[rIdx * degreeBins + tIdx], 1);
             }
         }
@@ -54,6 +56,9 @@ int main(int argc, char **argv) {
 
     int w = img.cols;
     int h = img.rows;
+
+    // Imprimir las dimensiones de la imagen
+    std::cout << "Tamaño de la imagen: " << w << "x" << h << std::endl;
 
     unsigned char *pic = new unsigned char[w * h];
     memcpy(pic, img.data, w * h);
@@ -89,8 +94,13 @@ int main(int argc, char **argv) {
     cudaEventCreate(&stop);
 
     cudaEventRecord(start);
-    int blockNum = ceil(w * h / 256);
-    GPU_HoughTran <<<blockNum, 256>>> (d_in, w, h, d_hough, rMax, rScale);
+
+    // Definir un tamaño de bloque eficiente y la cantidad de bloques
+    int threadsPerBlock = 256;
+    int blockNum = (w * h + threadsPerBlock - 1) / threadsPerBlock;  // Redondeo hacia arriba
+
+    GPU_HoughTran <<<blockNum, threadsPerBlock>>> (d_in, w, h, d_hough, rMax, rScale);
+    
     cudaEventRecord(stop);
 
     cudaEventSynchronize(stop);

@@ -13,8 +13,35 @@ const int degreeBins = 180 / degreeInc;
 const int rBins = 100;
 const float radInc = degreeInc * M_PI / 180;
 
-// Kernel de GPU sin memoria constante ni compartida
-__global__ void GPU_HoughTran(unsigned char *pic, int w, int h, int *acc, float rMax, float rScale) {
+// Función CPU original
+void CPU_HoughTran(unsigned char *pic, int w, int h, int **acc) {
+    float rMax = sqrt(1.0 * w * w + 1.0 * h * h) / 2;
+    *acc = new int[rBins * degreeBins];
+    memset(*acc, 0, sizeof(int) * rBins * degreeBins);
+    int xCent = w / 2;
+    int yCent = h / 2;
+    float rScale = 2 * rMax / rBins;
+
+    for (int i = 0; i < w; i++)
+        for (int j = 0; j < h; j++) {
+            int idx = j * w + i;
+            if (pic[idx] > 0) {
+                int xCoord = i - xCent;
+                int yCoord = yCent - j;
+                float theta = 0;
+                for (int tIdx = 0; tIdx < degreeBins; tIdx++) {
+                    float r = xCoord * cos(theta) + yCoord * sin(theta);
+                    int rIdx = (r + rMax) / rScale;
+                    if (rIdx >= 0 && rIdx < rBins)  // Asegurar índices válidos
+                        (*acc)[rIdx * degreeBins + tIdx]++;
+                    theta += radInc;
+                }
+            }
+        }
+}
+
+// Kernel de GPU actualizado usando memoria global
+__global__ void GPU_HoughTran(unsigned char *pic, int w, int h, int *acc, float rMax, float rScale, float *d_Cos, float *d_Sin) {
     int gloID = blockIdx.x * blockDim.x + threadIdx.x;
     if (gloID >= w * h) return;
 
@@ -26,12 +53,10 @@ __global__ void GPU_HoughTran(unsigned char *pic, int w, int h, int *acc, float 
 
     if (pic[gloID] > 0) {
         for (int tIdx = 0; tIdx < degreeBins; tIdx++) {
-            float theta = tIdx * radInc;
-            float r = xCoord * cos(theta) + yCoord * sin(theta);
+            float r = xCoord * d_Cos[tIdx] + yCoord * d_Sin[tIdx];
             int rIdx = (r + rMax) / rScale;
-            if (rIdx >= 0 && rIdx < rBins) {
+            if (rIdx >= 0 && rIdx < rBins)
                 atomicAdd(&acc[rIdx * degreeBins + tIdx], 1);
-            }
         }
     }
 }
@@ -49,24 +74,35 @@ int main(int argc, char **argv) {
         return -1;
     }
 
+    // Obtener las dimensiones de la imagen
     int w = img.cols;
     int h = img.rows;
+
+    // Imprimir el tamaño de la imagen
+    std::cout << "Tamaño de la imagen: " << w << "x" << h << std::endl;
 
     unsigned char *pic = new unsigned char[w * h];
     memcpy(pic, img.data, w * h);
 
-    // Inicialización de memoria para seno y coseno
-    float *pcCos = (float *)malloc(sizeof(float) * degreeBins);
-    float *pcSin = (float *)malloc(sizeof(float) * degreeBins);
+    // Inicialización de memoria para seno y coseno en memoria del dispositivo (GPU)
+    float *h_Cos = (float *)malloc(sizeof(float) * degreeBins);
+    float *h_Sin = (float *)malloc(sizeof(float) * degreeBins);
     float rad = 0;
     for (int i = 0; i < degreeBins; i++) {
-        pcCos[i] = cos(rad);
-        pcSin[i] = sin(rad);
+        h_Cos[i] = cos(rad);
+        h_Sin[i] = sin(rad);
         rad += radInc;
     }
 
     float rMax = sqrt(1.0 * w * w + 1.0 * h * h) / 2;
     float rScale = 2 * rMax / rBins;
+
+    // Copiar seno y coseno a la memoria del dispositivo (GPU)
+    float *d_Cos, *d_Sin;
+    cudaMalloc((void **)&d_Cos, sizeof(float) * degreeBins);
+    cudaMalloc((void **)&d_Sin, sizeof(float) * degreeBins);
+    cudaMemcpy(d_Cos, h_Cos, sizeof(float) * degreeBins, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_Sin, h_Sin, sizeof(float) * degreeBins, cudaMemcpyHostToDevice);
 
     unsigned char *d_in;
     int *d_hough, *h_hough;
@@ -82,8 +118,12 @@ int main(int argc, char **argv) {
     cudaEventCreate(&stop);
 
     cudaEventRecord(start);
-    int blockNum = ceil(w * h / 256);
-    GPU_HoughTran <<<blockNum, 256>>> (d_in, w, h, d_hough, rMax, rScale);
+
+    // Ajuste dinámico del número de bloques
+    int threadsPerBlock = 256;
+    int blockNum = ceil(w * h / (float)threadsPerBlock);  // Asegura que el número de bloques es correcto
+    GPU_HoughTran<<<blockNum, threadsPerBlock>>>(d_in, w, h, d_hough, rMax, rScale, d_Cos, d_Sin);
+
     cudaEventRecord(stop);
 
     cudaEventSynchronize(stop);
@@ -95,7 +135,7 @@ int main(int argc, char **argv) {
 
     // Comprobación de umbral y dibujo de líneas en la imagen de salida
     cv::Mat output = img.clone();
-    int threshold = 50;
+    int threshold = 30;
     for (int rIdx = 0; rIdx < rBins; rIdx++) {
         for (int tIdx = 0; tIdx < degreeBins; tIdx++) {
             if (h_hough[rIdx * degreeBins + tIdx] > threshold) {
@@ -123,7 +163,7 @@ int main(int argc, char **argv) {
     std::string baseName = fileName.substr(0, fileName.find_last_of("."));
     
     // Crear el nombre del archivo de salida (con extensión .png)
-    std::string outputFilePath = outputDir + "/" + baseName + "global.png";
+    std::string outputFilePath = outputDir + "/" + baseName + "Global.png";
 
     // Guardar la imagen de salida
     cv::imwrite(outputFilePath, output);
@@ -134,11 +174,11 @@ int main(int argc, char **argv) {
     delete[] pic;
     cudaFree(d_in);
     cudaFree(d_hough);
+    cudaFree(d_Cos);
+    cudaFree(d_Sin);
     free(h_hough);
-    free(pcCos);
-    free(pcSin);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    free(h_Cos);
+    free(h_Sin);
 
     return 0;
 }
