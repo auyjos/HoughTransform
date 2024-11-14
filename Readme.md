@@ -99,8 +99,4 @@ make clean
 
 Este comando eliminará el ejecutable y los archivos objeto generados durante la compilación.
 
-## Contribuciones
-
-Si deseas contribuir a este proyecto, por favor haz un fork, realiza tus cambios y envía un pull request. Asegúrate de que tus cambios estén bien documentados y sean coherentes con el estilo del proyecto.
-
 ---
